@@ -1,0 +1,73 @@
+
+# ==========================================
+# LAB-AIEDU — Backend
+# Node.js + Fastify + Jest
+# ==========================================
+
+# Dependências instaladas
+node_modules/
+
+# Variáveis de ambiente e segredos
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Relatórios de cobertura e testes
+coverage/
+.nyc_output/
+jest-results/
+test-results/
+*.lcov
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Arquivos temporários
+tmp/
+temp/
+.cache/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Configurações locais de IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.iml
+
+# Saídas de build
+dist/
+build/
+out/
+
+# Arquivos locais de execução
+*.pid
+*.pid.lock
+
+# Dados e bancos locais
+*.sqlite
+*.sqlite3
+*.db
+
+# Credenciais e chaves privadas
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json

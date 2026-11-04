@@ -1,0 +1,22 @@
+
+{
+  "name": "lab-aiedu-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend da plataforma academica LAB-AIEDU",
+  "main": "core/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node core/main.js",
+    "dev": "node --watch core/main.js",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test:coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage"
+  },
+  "dependencies": {
+    "@fastify/helmet": "^13.2.0",
+    "fastify": "^5.12.7"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2"
+  }
+}
