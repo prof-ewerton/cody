@@ -4,7 +4,7 @@
 
 O LAB-AIEDU é um projeto acadêmico de pesquisa e desenvolvimento de uma
 plataforma extensível voltada a Learning Analytics e Inteligência Artificial.
-O projeto está em prototipação. Este documento descreve o backend após a Etapa 6B.
+O projeto está em prototipação. Este documento descreve o backend no encerramento documental da Semana 03.
 
 ## 2. Objetivo do backend e da arquitetura de plugins
 
@@ -38,19 +38,30 @@ Backend/
 ├── core/
 │   ├── main.js
 │   ├── cody.js
-│   └── plugin-loader.js
+│   ├── plugin-loader.js
+│   ├── page-renderer.js
+│   └── public-assets.js
 ├── Plugins/
 │   ├── Plugin01/
 │   │   ├── manifest.json
 │   │   └── main.js
 │   └── Plugin02/                  # vazio; ignorado pelo carregador
+├── templates/
+│   └── experimental.html
+├── public/
+│   └── css/
+│       └── app.css
 ├── tests/
 │   ├── core.test.js
 │   ├── security.test.js
 │   ├── cody.test.js
 │   ├── plugin-loader.test.js
 │   ├── experimental-plugin.test.js
-│   └── bootstrap-plugins.test.js
+│   ├── bootstrap-plugins.test.js
+│   ├── pages.test.js
+│   ├── public-assets.test.js
+│   └── integrations/
+│       └── LAB-AIEDU/              # coleção Bruno (OpenCollection YAML)
 ├── docs/                          # registros e documentos acadêmicos
 └── node_modules/                  # dependências locais após instalação
 ```
@@ -127,7 +138,7 @@ curl -i -X POST http://127.0.0.1:3000/ \
   -d '{"nome":"Atividade de Learning Analytics"}'
 ```
 
-## 8. Plugin experimental e sua rota de status
+## 8. Plugin experimental: status JSON e página HTML
 
 `Plugins/Plugin01/` contém o plugin de ID `experimental`, versão `1.0.0`.
 Seu setup registra `GET /experimental/status`, que retorna HTTP 200 e JSON:
@@ -142,9 +153,21 @@ Após executar `npm start`, consulte com:
 curl -i http://127.0.0.1:3000/experimental/status
 ```
 
-A rota fica ausente com `buildApp()` sem carregador. Os comandos `curl` são
-exemplos de uso; a verificação HTTP manual não foi realizada no registro
-da Etapa 6B nem nesta atualização.
+O mesmo setup registra `GET /experimental/pagina`, que retorna HTTP 200 e
+`text/html; charset=utf-8`, com o título “Plugin experimental” e a mensagem
+“Plugin ativo no LAB-AIEDU.”. A página inclui o CSS do núcleo e um link para
+o status em JSON, cujo contrato permanece preservado.
+
+```bash
+curl -i http://127.0.0.1:3000/experimental/pagina
+curl -i http://127.0.0.1:3000/public/css/app.css
+```
+
+No navegador, abra `http://127.0.0.1:3000/experimental/pagina` para visualizar
+a página ou `http://127.0.0.1:3000/experimental/status` para consultar o JSON.
+As duas rotas do plugin ficam ausentes com `buildApp()` sem carregador.
+Os comandos são exemplos de uso; nenhuma verificação HTTP manual foi realizada
+nesta atualização documental.
 
 ## 9. Arquitetura e fluxo de carregamento dos plugins
 
@@ -216,7 +239,7 @@ O módulo deve exportar uma propriedade própria `setup` do tipo função.
 O carregador passa um objeto que atualmente contém apenas `cody`; ID, versão
 e outros metadados não são repassados em `config`.
 
-Exemplo funcional, correspondente ao plugin experimental:
+Trecho funcional da rota de status do plugin experimental:
 
 ```javascript
 function setup(config) {
@@ -255,9 +278,10 @@ cody.addRouter(caminho, objetoDeRotas);
 - `objetoDeRotas` deve ser um objeto simples não vazio, com chaves `GET`,
   `POST`, `PUT` ou `DELETE`, em maiúsculas.
 - Cada definição é um objeto simples com `handler` obrigatório (função) e
-  `schema` opcional (objeto simples). Outras opções são rejeitadas.
+  `schema` opcional (objeto simples) e `template` facultativo, conforme o
+  contrato HTML abaixo. Outras opções são rejeitadas.
 
-Os handlers usam o formato nativo do Fastify: `(request, reply)`, com acesso a
+Sem `template`, os handlers usam o formato nativo do Fastify: `(request, reply)`, com acesso a
 `request.params`, `request.query` e `request.body`. Podem retornar resultados
 em handlers assíncronos ou usar `reply.send()`. Funções tradicionais preservam
 o `this` nativo do Fastify. `schema` é encaminhado ao Fastify, incluindo schemas
@@ -282,6 +306,73 @@ Não sobrescreve rotas do núcleo ou de outros plugins. Preserva o HEAD automát
 do Fastify para GET, embora `HEAD` não seja aceito como chave da API; GET também
 é recusado diante de HEAD preexistente.
 
+### Renderização HTML com `template`
+
+A opção facultativa `template: 'experimental'` ativa a renderização pelo núcleo.
+Inicialmente, ela é aceita somente em `GET`, sem `schema.response`. Schemas de
+entrada continuam sendo encaminhados ao Fastify. Qualquer outro identificador
+de template, inclusive um caminho de arquivo, é rejeitado no registro.
+
+Exemplo real do registro da página em `Plugins/Plugin01/main.js`:
+
+```javascript
+config.cody.addRouter('/experimental/pagina', {
+    GET: {
+        template: 'experimental',
+        handler: async () => ({
+            titulo: 'Plugin experimental',
+            mensagem: 'Plugin ativo no LAB-AIEDU.'
+        })
+    }
+});
+```
+
+Diferentemente do handler tradicional `(request, reply)`, o handler com template
+recebe apenas `request`, sem `reply` nem o `this` nativo do Fastify. Deve retornar,
+sincronamente ou por Promise, um objeto simples com **exatamente** dois campos
+próprios: `titulo` e `mensagem`, ambos strings. São aceitas strings vazias e
+Unicode; não há limite de tamanho definido nesse contrato. Objetos sem protótipo
+são aceitos; campos herdados, getters, valores de outros tipos e campos extras
+são rejeitados. O plugin fornece dados; o núcleo monta e envia a resposta HTML.
+Erros do handler ou dados inválidos resultam em HTTP 500 com JSON genérico,
+sem expor a mensagem interna da falha.
+
+### Templates e responsabilidade pela apresentação
+
+`templates/experimental.html` pertence ao núcleo e contém os marcadores fixos
+`{{titulo}}` e `{{mensagem}}`, usados no texto de um `<h1>` e de um `<p>`.
+O campo `titulo` alimenta o `<h1>`; o `<title>` do documento é fixo.
+`core/page-renderer.js` lê o template durante `onReady`, quando o modo HTML é
+utilizado, valida o caminho real e exige um arquivo regular no diretório
+`templates/`. Ausência ou destino inválido impede a inicialização.
+O conteúdo fica em memória e não é relido por requisição.
+
+O renderizador escapa `&`, `<`, `>`, `"` e `'` como `&amp;`, `&lt;`, `&gt;`,
+`&quot;` e `&#39;`. A substituição ocorre em passagem única: marcadores contidos
+nos dados não são processados novamente, e os valores não são executados como
+código. Por exemplo, `<b>Olá</b>` aparece como texto, não como uma tag ativa.
+
+Esse escape atende aos pontos de inserção atuais em texto HTML. Não é um
+sanitizador genérico para HTML livre nem uma proteção adequada, por si só,
+para inserir dados em JavaScript, CSS, URLs ou outros contextos. Templates
+continuam sendo código de apresentação confiável, controlado pela equipe.
+Não há seleção arbitrária de arquivos nem mecanismo genérico de templates.
+
+### Recursos públicos autorizados
+
+`public/css/app.css` define a apresentação da página. `core/public-assets.js`
+publica exclusivamente `GET /public/css/app.css`, com
+`text/css; charset=utf-8`, Helmet e HEAD automático do Fastify. Esse recurso
+é registrado também em `buildApp()` sem plugins.
+
+Na inicialização, o núcleo exige um arquivo regular e verifica que seu caminho
+real permanece dentro de `public/`, impedindo escape por links simbólicos.
+O CSS é lido uma vez e mantido em memória. A URL é fixa e não usa um caminho
+fornecido pelo cliente para escolher arquivos. Não há listagem de diretórios
+nem suporte genérico a arquivos públicos: `/public/css/outro.css` e
+`/templates/experimental.html`, por exemplo, não são publicados e retornam 404.
+CSS ausente ou inválido impede a inicialização da aplicação.
+
 ## 14. Validação, segurança e tratamento de falhas
 
 - Helmet configura cabeçalhos HTTP de segurança, inclusive nas rotas de plugins.
@@ -292,11 +383,13 @@ do Fastify para GET, embora `HEAD` não seja aceito como chave da API; GET tamb�
   como ocorre no `POST /`.
 - Os schemas dos plugins usam a validação do Fastify. O Cody valida seu formato
   externo; a compilação pode falhar durante o bootstrap.
-- As respostas HTML demonstrativas são estáticas. Dados não confiáveis não
-  devem ser inseridos em HTML sem tratamento adequado ao contexto.
+- As quatro respostas HTML demonstrativas de `/` permanecem estáticas. No
+  modo template, o núcleo escapa os dados nos pontos de texto autorizados;
+  isso não elimina a necessidade de tratamento adequado em outros contextos.
 
-Os testes incluem ausência de reflexão de marcadores XSS, cabeçalhos,
-validação e limites. Não executam scripts em navegador nem demonstram ausência
+Os testes incluem ausência de reflexão de marcadores XSS nas rotas anteriores,
+escape no template, rejeição de dados inválidos, restrições de arquivos,
+cabeçalhos, validação e limites. Não executam scripts em navegador nem demonstram ausência
 de todas as vulnerabilidades.
 
 Erros do carregador indicam a fase (ciclo de vida, descoberta, validação,
@@ -335,13 +428,13 @@ Sem essas opções, `npm run test:coverage` usa os relatórios padrão do Jest,
 que podem gerar arquivos em `coverage/`. As suítes do carregador e do bootstrap
 criam fixtures em diretórios temporários e os removem ao final.
 
-As seis suítes cobrem núcleo, segurança, Cody, carregador, plugin experimental
-e bootstrap. As rotas usam `app.inject()`, sem servidor HTTP de rede.
+As oito suítes cobrem núcleo, segurança, Cody, carregador, plugin experimental,
+bootstrap, páginas e recursos públicos. As rotas usam `app.inject()`, sem servidor HTTP de rede.
 Nos testes de `start()`, `listen()` é substituído por uma simulação.
 
-O relatório mais recente registrado em [docs/semana02.md](docs/semana02.md),
-na integração dos plugins ao bootstrap, apresentou **6 suítes, 225 testes
-aprovados e 98,85% de cobertura total de linhas**. Esses números correspondem
+O relatório mais recente registrado em [docs/semana03.md](docs/semana03.md)
+apresentou **274 testes aprovados em 8 suítes e 99,12% de cobertura global
+de linhas**. Esses números correspondem
 à última execução registrada e podem mudar conforme o desenvolvimento.
 Os testes não foram reexecutados nesta atualização do README.
 
@@ -354,22 +447,55 @@ em CommonJS; os scripts já fornecem a opção, sem necessidade de definir
 `NODE_OPTIONS` manualmente. Essa configuração deve ser reavaliada quando
 o ambiente ou as dependências forem atualizados.
 
-## 16. Estado atual, limitações e próximos passos
+## 16. Testes manuais com Bruno
 
-A Etapa 6B integra o carregador ao bootstrap e mantém a construção isolada
-por `buildApp()`. Cody, seleção de versões, setups aguardados e o plugin
-experimental estão implementados. As quatro rotas demonstrativas permanecem.
+A coleção em `tests/integrations/LAB-AIEDU/` contém `opencollection.yml` e
+quatro requisições YAML. No Bruno com suporte ao formato OpenCollection,
+use a opção de abrir uma coleção (Open Collection) e selecione essa pasta.
+O arquivo `opencollection.yml` identifica a coleção como LAB-AIEDU.
+
+Na raiz de `Backend/`, com as dependências instaladas, execute `npm start`
+e mantenha o terminal aberto. No Bruno, abra cada requisição e use o comando
+de envio (Send). Todas usam URLs completas em `http://127.0.0.1:3000`, sem
+necessidade de configurar variáveis de ambiente na coleção.
+
+| Arquivo | Requisição presente | Resultado esperado pelo código |
+| --- | --- | --- |
+| `01 - Status do Plugin.yml` | `GET /experimental/status` | HTTP 200 e JSON com plugin, status e versão. |
+| `02 - Página Experimental.yml` | `GET /experimental/pagina` | HTTP 200 e HTML da página experimental. |
+| `03 - POST Válido.yml` | `POST /` com `{"nome":"LAB-AIEDU"}` | HTTP 200 e HTML estático de recebimento. |
+| `04 - POST Inválido.yml` | `POST /` com `{"nome":"LAB-AIEDU","idade":20}` | HTTP 400: propriedade adicional não permitida. |
+
+Confira manualmente o status, os cabeçalhos e o corpo retornados. Os arquivos
+não contêm scripts de teste nem assertions automatizadas; os resultados acima
+são expectativas derivadas do código, não resultados de uma execução Bruno
+nesta revisão. A coleção não substitui as suítes Jest. Para conferir a
+apresentação e o carregamento do CSS, abra a página no navegador.
+Ao terminar, encerre o servidor com `Ctrl+C` no terminal.
+
+Os arquivos da coleção podem ser versionados junto ao projeto no GitHub,
+permitindo compartilhar e revisar as requisições. Isso não exige uma integração
+automatizada com o GitHub; esta atualização não executa add, commit ou push.
+
+## 17. Estado atual, limitações e próximos passos
+
+A Semana 03 acrescenta renderização HTML controlada pelo núcleo e um recurso
+CSS autorizado à arquitetura existente. Cody, seleção de versões, setups
+aguardados e construção isolada por `buildApp()` permanecem implementados.
+O plugin experimental fornece JSON e HTML, e as quatro rotas demonstrativas
+do núcleo permanecem disponíveis.
 
 Não há banco de dados, persistência, sandbox, rollback ou hot reload de plugins.
 Não há configuração de Docker, Docker Compose ou GitHub Actions nesta etapa.
-A API Cody aceita inicialmente apenas GET, POST, PUT e DELETE e os formatos
-de caminho e opções descritos neste documento.
+A API Cody aceita GET, POST, PUT e DELETE nos formatos descritos; a renderização
+HTML aceita somente GET com o template explicitamente autorizado `experimental`.
+Não há suporte genérico a arquivos públicos: somente o CSS fixo é publicado.
 
-A instalação limpa, a conexão HTTP real e a disponibilidade da porta não foram
-verificadas no registro citado. O trecho de execução direta que define
-`process.exitCode` permanece sem cobertura naquele relatório.
+A instalação limpa, a conexão HTTP real, a disponibilidade da porta e a
+execução da coleção Bruno não foram verificadas nesta atualização documental.
+Os resultados de Jest e cobertura citados são os registrados no diário.
 
-Próximos passos a avaliar, sujeitos à aprovação de escopo: realizar a verificação
-HTTP manual proposta, reavaliar VM Modules quando necessário e documentar
-futuras evoluções dos contratos e funcionalidades. Essas possibilidades não
-representam funcionalidades implementadas.
+Próximos passos a avaliar, sujeitos à aprovação de escopo: conferir a página no
+navegador, executar as requisições Bruno, reavaliar VM Modules quando necessário
+e documentar futuras evoluções dos contratos. Essas possibilidades não
+representam funcionalidades adicionais implementadas.

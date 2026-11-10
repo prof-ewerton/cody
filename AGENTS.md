@@ -190,7 +190,7 @@ Não apresentar apenas o código final sem contextualização.
 
 8. Documentação semanal
 
-Após cada alteração autorizada, fornecer obrigatoriamente um bloco Markdown pronto para ser acrescentado ao arquivo docs/semana02.md.
+Após cada alteração autorizada, fornecer obrigatoriamente um bloco Markdown pronto para ser acrescentado ao arquivo docs/semana0X.md.
 
 O registro deverá conter, quando aplicável:
 
@@ -214,7 +214,7 @@ Registrar somente fatos confirmados.
 
 Não declarar funcionalidades como concluídas antes de sua implementação e verificação.
 
-Não modificar automaticamente docs/semana02.md sem autorização expressa.
+Não modificar automaticamente docs/semana0X.md sem autorização expressa.
 
 Preservar o conteúdo já existente no documento, evitando duplicações.
 
