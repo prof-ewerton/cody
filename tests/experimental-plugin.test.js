@@ -94,8 +94,8 @@ describe('Plugin experimental real', () => {
         const addRouter = jest.fn();
         expect(addRouter).not.toHaveBeenCalled();
         isolatedModule.exports.setup({ cody: { addRouter } });
-        expect(addRouter).toHaveBeenCalledTimes(1);
-        const [url, routes] = addRouter.mock.calls[0];
+        expect(addRouter).toHaveBeenCalledTimes(2);
+        const [url, routes] = addRouter.mock.calls.find(([url]) => url === '/experimental/status');
         expect(url).toBe('/experimental/status');
         expect(Object.keys(routes)).toEqual(['GET']);
         await expect(routes.GET.handler()).resolves.toEqual(expectedStatus);

@@ -14,6 +14,26 @@ describe('API Cody', () => {
         await app.close();
     });
 
+    test.each([undefined, null, '../experimental', 'desconhecido', {}, 1])('Rejeita template inválido: %p', template => {
+        expect(() => createCody(app).addRouter('/html', { GET: { template, handler: async () => ({}) } }))
+            .toThrow(/template desconhecido/);
+        expect(app.hasRoute({ method: 'GET', url: '/html' })).toBe(false);
+    });
+
+    test.each(['POST', 'PUT', 'DELETE'])('Recusa template em %s sem registro parcial', method => {
+        expect(() => createCody(app).addRouter('/html', {
+            GET: { handler: async () => ({ ok: true }) },
+            [method]: { template: 'experimental', handler: async () => ({}) }
+        })).toThrow(/template exige GET/);
+        expect(app.hasRoute({ method: 'GET', url: '/html' })).toBe(false);
+    });
+
+    test('Recusa schema de resposta no modo HTML', () => {
+        expect(() => createCody(app).addRouter('/html', { GET: {
+            template: 'experimental', schema: { response: { 200: { type: 'object' } } }, handler: async () => ({})
+        } })).toThrow(/sem schema de resposta/);
+    });
+
     const bodySchema = {
         type: 'object',
         required: ['nome'],
