@@ -1,3 +1,5 @@
+const { validateTemplate, createPageRenderer } = require('./page-renderer');
+
 function isPlainObject(value) {
     if (value === null || typeof value !== 'object') return false;
     const prototype = Object.getPrototypeOf(value);
@@ -29,6 +31,7 @@ function createCody(app) {
     }
 
     let registrationClosed = false;
+    let renderPage;
     app.addHook('onReady', async () => {
         registrationClosed = true;
     });
@@ -53,7 +56,7 @@ function createCody(app) {
                 throw new TypeError(`Cody: a definição de ${method} ${path} deve ser um objeto simples.`);
             }
             for (const option of Reflect.ownKeys(definition)) {
-                if (option !== 'handler' && option !== 'schema') {
+                if (option !== 'handler' && option !== 'schema' && option !== 'template') {
                     throw new TypeError(`Cody: opção desconhecida ${String(option)} em ${method} ${path}.`);
                 }
             }
@@ -63,7 +66,27 @@ function createCody(app) {
             if (definition.schema !== undefined && !isPlainObject(definition.schema)) {
                 throw new TypeError(`Cody: schema de ${method} ${path} deve ser um objeto simples.`);
             }
-            definitions.push({ method, url: path, handler: definition.handler, schema: definition.schema });
+            let handler = definition.handler;
+            if (Object.hasOwn(definition, 'template')) {
+                validateTemplate(definition.template);
+                if (method !== 'GET' || definition.schema?.response !== undefined) {
+                    throw new TypeError('Cody: template exige GET sem schema de resposta.');
+                }
+                // O handler de página recebe apenas request, sem reply ou this do Fastify.
+                const dataHandler = definition.handler;
+                handler = async (request, reply) => {
+                    try {
+                        const data = await dataHandler(request);
+                        return reply.type('text/html; charset=utf-8').send(renderPage(data));
+                    } catch (error) {
+                        request.log.error({ err: error }, 'Falha ao produzir página');
+                        return reply.code(500).type('application/json').send({
+                            error: 'Internal Server Error', message: 'Não foi possível produzir a página.', statusCode: 500
+                        });
+                    }
+                };
+            }
+            definitions.push({ method, url: path, handler, schema: definition.schema });
         }
 
         // Consulta o registro real, incluindo as rotas do núcleo e HEAD automático.
@@ -74,6 +97,10 @@ function createCody(app) {
             if (definition.method === 'GET' && app.hasRoute({ method: 'HEAD', url: path })) {
                 throw new Error(`Cody: conflito de GET ${path} com HEAD preexistente.`);
             }
+        }
+
+        if (!renderPage && Reflect.ownKeys(routes).some(method => Object.hasOwn(routes[method], 'template'))) {
+            renderPage = createPageRenderer(app);
         }
 
         for (const definition of definitions) {

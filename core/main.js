@@ -2,6 +2,7 @@ const fastify = require('fastify');
 const helmet = require('@fastify/helmet');
 const path = require('node:path');
 const { loadPlugins } = require('./plugin-loader');
+const { publicAssets } = require('./public-assets');
 // -> esse require é uma função do CommonJS utilizada para importar módulos
 
 function buildApp({ pluginsDir } = {}) {
@@ -15,6 +16,7 @@ function buildApp({ pluginsDir } = {}) {
         }
     });// -> fastify() cria uma nova instância do servidor Fastify
     app.register(helmet);
+    app.register(publicAssets);
 
     //*/
     app.get('/', async (request, reply) => {
