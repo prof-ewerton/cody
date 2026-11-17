@@ -1,4 +1,4 @@
-const { validateTemplate, createPageRenderer } = require('./page-renderer');
+const { validateTemplate, createPageRenderer } = require('./render');
 
 function isPlainObject(value) {
     if (value === null || typeof value !== 'object') return false;
