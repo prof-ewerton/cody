@@ -1,4 +1,4 @@
-# Semana 03 — Estruturação inicial do sistema de Plugins 10/11/26
+# Semana 03 — Render com HTML 10/11/26
 
 ## 01. Renderização HTML controlada pelo núcleo
 
@@ -30,7 +30,12 @@
 - Pendências: inspeção manual no navegador e coleção Bruno.
 - Limitação: os testes não demonstram ausência de todas as vulnerabilidades.
 
-## 02. Revisão do README
+## 02. Testes manuais com o Bruno + navegador
+
+- Aprendi a usar o Bruno e fiz alguns testes manuais preservando os arquivos .yamal que foram gerados para serem versionados.
+- Rodei o comando 'npm start' e checkei a nova rota da página html no navegador.
+
+## 03. Revisão do README
 
 - Atividade: atualização do README conforme o código e os testes existentes.
 - Arquivo modificado: README.md.
