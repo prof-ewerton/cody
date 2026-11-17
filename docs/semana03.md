@@ -1,4 +1,4 @@
-# Semana 03 — Render com HTML 10/11/26
+# Semana 03 — Render com HTML 03/11/26
 
 ## 01. Renderização HTML controlada pelo núcleo
 
