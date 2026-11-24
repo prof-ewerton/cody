@@ -21,6 +21,7 @@ describe('Recursos públicos autorizados', () => {
     });
 
     test.each(['/public/', '/public/css/outro.css', '/public/main.js', '/templates/experimental.html',
+        '/package.json', '/core/main.js',
         '/public/../package.json', '/public/%2e%2e/package.json',
         '/public/css/../../../core/main.js', '/public/css/%2e%2e%2f%2e%2e%2fpackage.json',
         '/public/css/..%5c..%5cpackage.json'])('Não publica %s', async url => {

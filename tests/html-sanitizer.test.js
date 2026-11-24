@@ -70,7 +70,8 @@ describe('Sanitização de HTML', () => {
         <!DOCTYPE html>
         <html>
             <head>
-                <title>Meu plugin</title>
+                <title>MARCADOR_TITULO</title>
+                <p>MARCADOR_HEAD</p>
                 <script>alert(1)</script>
             </head>
             <body>
@@ -87,7 +88,26 @@ describe('Sanitização de HTML', () => {
     expect(resultado).not.toContain('<script');
     expect(resultado).not.toContain('<head');
     expect(resultado).not.toContain('<body');
+        expect(resultado).not.toContain('MARCADOR_TITULO');
+        expect(resultado).not.toContain('MARCADOR_HEAD');
     });
+
+    test.each([
+        ['title isolado', '<title>DESCARTAR</title><p>Corpo</p>', '<p>Corpo</p>'],
+        ['head com transição implícita para body', '<head><title>DESCARTAR</title><body><p>Corpo</p>', '<p>Corpo</p>'],
+        ['head sem fechamento reconhecível', '<p>Corpo</p><head><p>DESCARTAR', '<p>Corpo</p>'],
+        ['title sem fechamento reconhecível', '<p>Corpo</p><title>DESCARTAR<p>Também descartado', '<p>Corpo</p>'],
+        ['fragmento comum', '<p>Corpo <strong>permitido</strong></p>', '<p>Corpo <strong>permitido</strong></p>']
+    ])('Sanitiza %s', (_scenario, html, expected) => {
+        expect(sanitizeHtml(html)).toBe(expected);
+    });
+
+    test.each(['script', 'style', 'textarea', 'option', 'xmp'])(
+        'Mantém o descarte do conteúdo de %s', tag => {
+            const html = '<p>Corpo</p><' + tag + '>DESCARTAR</' + tag + '><p>Fim</p>';
+            expect(sanitizeHtml(html)).toBe('<p>Corpo</p><p>Fim</p>');
+        }
+    );
 
     test('deve remover um iframe não autorizado', () => {
         const entrada = '<p>Meu plugin</p><iframe src="https://exemplo.com"></iframe>';

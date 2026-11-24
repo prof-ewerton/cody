@@ -86,18 +86,25 @@ describe('Plugin experimental real', () => {
         expect((await app.inject('/experimental/status')).statusCode).toBe(404);
     });
 
-    test('Módulo, setup e handler funcionam sem disponibilizar require ou imports', async () => {
+    test('Módulo, setup e ambos os handlers funcionam sem disponibilizar require ou imports', async () => {
         const source = await fs.readFile(path.join(pluginDir, 'main.js'), 'utf8');
         const isolatedModule = { exports: {} };
         // Verificação isolada de dependências, sem sandbox no carregador de produção.
         runInNewContext(source, { module: isolatedModule, exports: isolatedModule.exports });
         const addRouter = jest.fn();
+        const out = jest.fn(html => html);
+        const newPage = jest.fn(() => ({ out }));
         expect(addRouter).not.toHaveBeenCalled();
-        isolatedModule.exports.setup({ cody: { addRouter } });
+        isolatedModule.exports.setup({ cody: { addRouter, newPage } });
         expect(addRouter).toHaveBeenCalledTimes(2);
         const [url, routes] = addRouter.mock.calls.find(([url]) => url === '/experimental/status');
         expect(url).toBe('/experimental/status');
         expect(Object.keys(routes)).toEqual(['GET']);
         await expect(routes.GET.handler()).resolves.toEqual(expectedStatus);
+        const [, pageRoutes] = addRouter.mock.calls.find(([url]) => url === '/experimental/pagina');
+        expect(Object.keys(pageRoutes)).toEqual(['GET']);
+        await expect(pageRoutes.GET.handler()).resolves.toContain('<h1>Bem-vindo ao LAB-AIEDU!</h1>');
+        expect(newPage).toHaveBeenCalledTimes(1);
+        expect(out).toHaveBeenCalledWith(expect.stringContaining('<h1>Bem-vindo ao LAB-AIEDU!</h1>'));
     });
 });

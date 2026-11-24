@@ -4,7 +4,7 @@
 
 O LAB-AIEDU é um projeto acadêmico de pesquisa e desenvolvimento de uma
 plataforma extensível voltada a Learning Analytics e Inteligência Artificial.
-O projeto está em prototipação. Este documento descreve o backend no encerramento documental da Semana 03.
+O projeto está em prototipação. Este documento descreve o backend durante a Semana 04.
 
 ## 2. Objetivo do backend e da arquitetura de plugins
 
@@ -13,15 +13,16 @@ funcionalidades desenvolvidas pela equipe por meio de plugins. Nesta etapa,
 as rotas do núcleo são demonstrativas e um único plugin experimental valida
 a descoberta, a seleção de versões e o registro de rotas pela interface Cody.
 
-`core/main.js` constrói e inicializa a aplicação; `core/plugin-loader.js`
-descobre e carrega plugins; `core/cody.js` fornece a interface controlada
-de registro de rotas, sem tabela global compartilhada entre aplicações.
+As rotas nativas de `/` e do ativo público são registradas pelo núcleo
+diretamente no Fastify. As rotas dos plugins são registradas pelo Cody, que
+controla o envio de suas respostas.
 
 ## 3. Tecnologias utilizadas
 
 - Node.js 24 e JavaScript com CommonJS.
 - Fastify 5 e `@fastify/helmet`.
 - Jest 30.
+- `sanitize-html` para sanitização dos fragmentos HTML dos plugins.
 - JSON Schema e Ajv integrados ao Fastify para validação das rotas.
 - Módulos nativos do Node.js para arquivos e caminhos no carregador.
 
@@ -31,6 +32,7 @@ O manifesto possui validação própria no carregador, sem Ajv.
 
 ```text
 Backend/
+├── .gitignore
 ├── AGENTS.md
 ├── README.md
 ├── package.json
@@ -39,15 +41,13 @@ Backend/
 │   ├── main.js
 │   ├── cody.js
 │   ├── plugin-loader.js
-│   ├── page-renderer.js
+│   ├── render.js
+│   ├── html-sanitizer.js
 │   └── public-assets.js
 ├── Plugins/
-│   ├── Plugin01/
-│   │   ├── manifest.json
-│   │   └── main.js
-│   └── Plugin02/                  # vazio; ignorado pelo carregador
-├── templates/
-│   └── experimental.html
+│   └── Plugin01/
+│       ├── manifest.json
+│       └── main.js
 ├── public/
 │   └── css/
 │       └── app.css
@@ -59,11 +59,11 @@ Backend/
 │   ├── experimental-plugin.test.js
 │   ├── bootstrap-plugins.test.js
 │   ├── pages.test.js
+│   ├── html-sanitizer.test.js
 │   ├── public-assets.test.js
 │   └── integrations/
 │       └── LAB-AIEDU/              # coleção Bruno (OpenCollection YAML)
-├── docs/                          # registros e documentos acadêmicos
-└── node_modules/                  # dependências locais após instalação
+└── docs/                          # registros e documentos acadêmicos
 ```
 
 ## 5. Pré-requisitos e instalação
@@ -154,13 +154,13 @@ curl -i http://127.0.0.1:3000/experimental/status
 ```
 
 O mesmo setup registra `GET /experimental/pagina`, que retorna HTTP 200 e
-`text/html; charset=utf-8`, com o título “Plugin experimental” e a mensagem
-“Plugin ativo no LAB-AIEDU.”. A página inclui o CSS do núcleo e um link para
-o status em JSON, cujo contrato permanece preservado.
+`text/html; charset=utf-8`. O documento tem o título `LAB-AIEDU` e exibe
+“Bem-vindo ao LAB-AIEDU!”, uma descrição do plugin e a lista de animais.
+O sanitizador remove o script de demonstração, seu conteúdo e o atributo
+`onclick`, preservando o texto do parágrafo.
 
 ```bash
 curl -i http://127.0.0.1:3000/experimental/pagina
-curl -i http://127.0.0.1:3000/public/css/app.css
 ```
 
 No navegador, abra `http://127.0.0.1:3000/experimental/pagina` para visualizar
@@ -170,6 +170,20 @@ Os comandos são exemplos de uso; nenhuma verificação HTTP manual foi realizad
 nesta atualização documental.
 
 ## 9. Arquitetura e fluxo de carregamento dos plugins
+
+| Local | Responsabilidade |
+| --- | --- |
+| `core/main.js` | Constrói o Fastify, configura segurança e validação, registra as rotas nativas e coordena a inicialização HTTP. |
+| `core/plugin-loader.js` | Descobre plugins, valida manifestos, seleciona versões e executa os setups. |
+| `core/cody.js` | Registra as rotas dos plugins, prepara os dados dos handlers e controla status, tipo de conteúdo e envio. |
+| `core/render.js` | Encaminha o fragmento ao sanitizador e monta o documento HTML padrão. |
+| `core/html-sanitizer.js` | Aplica o limite e a lista de permissões para o fragmento HTML. |
+| `core/public-assets.js` | Publica o ativo CSS fixo em uma rota nativa do núcleo. |
+| `Plugins/` | Contém os manifestos e os módulos CommonJS dos plugins. |
+| `tests/` | Reúne as suítes Jest e a coleção de requisições manuais. |
+| `docs/` | Reúne os registros semanais e os documentos acadêmicos. |
+
+### Carregamento
 
 1. O carregador verifica o ciclo de inicialização e cria uma interface Cody
    associada à instância Fastify de seu escopo.
@@ -189,6 +203,23 @@ nesta atualização documental.
 Módulos e setups não executam a cada requisição. O cache CommonJS é preservado;
 o setup é executado para cada aplicação. Estado específico de uma aplicação
 deve ser criado dentro do setup, evitando estado global no módulo.
+
+### Fluxo de respostas dos plugins
+
+```mermaid
+flowchart LR
+    P[Handler do plugin] --> C[Cody]
+    C --> T{Classificação do retorno}
+    T -->|Página declarativa válida| H[Sanitização e renderização HTML]
+    T -->|Valor JSON| J[Serialização JSON]
+    T -->|String comum sem schema| S[Texto simples]
+    T -->|Retorno inválido ou falha interna| E[HTTP 500 genérico em JSON]
+    H --> F[Fastify]
+    J --> F
+    S --> F
+    E --> F
+    F --> U[Cliente HTTP]
+```
 
 ## 10. Como desenvolver um novo plugin
 
@@ -262,105 +293,133 @@ registro deve ser aguardado dentro do setup ou incluído na Promise retornada:
 o carregador aguarda esse resultado. Registre as rotas durante a inicialização;
 o Cody encerra o registro em `onReady`.
 
-## 13. API cody.addRouter()
+## 13. API Cody
 
-```javascript
-cody.addRouter(caminho, objetoDeRotas);
-```
+### Registro com `cody.addRouter(path, routes)`
 
-- `caminho` começa por `/`. São aceitos `/`, segmentos estáticos com letras,
+- O caminho começa por `/`. São aceitos `/`, segmentos estáticos com letras,
   números, `.`, `_`, `~` e `-`, e parâmetros simples como `/:id`.
 - Parâmetros começam por letra ASCII ou `_` e continuam com letras ASCII,
-  números ou `_`; não podem se repetir no mesmo caminho.
-- Não são aceitos espaços, controles, segmentos vazios, barra final fora de
-  `/`, segmentos `.` e `..`, query string, fragmentos, curingas ou parâmetros
-  opcionais/com expressão regular.
-- `objetoDeRotas` deve ser um objeto simples não vazio, com chaves `GET`,
-  `POST`, `PUT` ou `DELETE`, em maiúsculas.
-- Cada definição é um objeto simples com `handler` obrigatório (função) e
-  `schema` opcional (objeto simples) e `template` facultativo, conforme o
-  contrato HTML abaixo. Outras opções são rejeitadas.
+  números ou `_`. Os nomes devem ser únicos no caminho.
+- O Cody rejeita espaços, controles, segmentos vazios, barra final fora de
+  `/`, segmentos `.` e `..`, query string, fragmentos, curingas e parâmetros
+  opcionais ou com expressão regular.
+- `routes` é um objeto simples não vazio com chaves `GET`, `POST`, `PUT` ou
+  `DELETE` em maiúsculas. Cada definição aceita `handler` obrigatório e
+  `schema` opcional. O Fastify recebe os schemas de entrada e resposta.
 
-Sem `template`, os handlers usam o formato nativo do Fastify: `(request, reply)`, com acesso a
-`request.params`, `request.query` e `request.body`. Podem retornar resultados
-em handlers assíncronos ou usar `reply.send()`. Funções tradicionais preservam
-o `this` nativo do Fastify. `schema` é encaminhado ao Fastify, incluindo schemas
-de corpo, parâmetros, query string e resposta.
+O Cody registra o caminho sem prefixo automático. Valida todas as definições
+e verifica os conflitos conhecidos antes do registro, incluindo conflitos
+com as rotas nativas e padrões parametrizados equivalentes. Registre as rotas
+no setup, antes de `onReady` encerrar essa fase.
 
-Exemplo dentro de um setup, em que `cody` é `config.cody`:
+GET mantém o HEAD automático do Fastify. A API aceita GET para esse fim e
+rejeita `HEAD` como chave de registro. Um HEAD preexistente também impede
+o registro do GET correspondente. Em uma requisição HEAD, o handler recebe
+`method: 'HEAD'` e o Fastify envia a resposta sem corpo.
+
+### Interface dos handlers
+
+Handlers síncronos e assíncronos recebem exatamente um objeto com `params`,
+`query`, `body`, `headers` e `method`. Depois da validação de entrada,
+o Cody copia esses dados, inclusive as estruturas aninhadas. Os objetos
+nativos `request` e `reply` ficam no núcleo, e a chamada do handler ocorre
+sem vínculo de `this` com o Fastify.
+
+### Páginas com `cody.newPage().out(html)`
+
+Passe um fragmento HTML como string e devolva o resultado de `out()` pelo
+handler. O Cody só aceita esse resultado em rotas registradas como GET
+sem `schema.response`. A regra também se aplica ao HEAD automático dessa rota.
+
+O núcleo sanitiza o fragmento e monta o documento padrão com `<!DOCTYPE html>`,
+`<html lang="pt-BR">`, metadados e título `LAB-AIEDU`. O fragmento sanitizado
+fica no `body`, e a resposta usa `text/html; charset=utf-8`.
+
+O limite do fragmento é de **100.000 unidades UTF-16** (`html.length`).
+Nenhum atributo do fragmento é permitido. O sanitizador descarta integralmente
+o conteúdo de `head` e `title` fornecido pelo plugin, assim como o de `script`,
+`style`, `textarea`, `option` e `xmp`. Em HTML incompleto, o parser também
+descarta o trecho que ainda interpreta como parte de uma dessas regiões.
+As tags permitidas são:
+
+- Títulos e texto — `h1` a `h6`, `p`, `br`, `hr`, `strong`, `b`, `em`, `i`.
+- Listas e blocos — `ul`, `ol`, `li`, `blockquote`, `pre`, `code`.
+- Tabelas — `table`, `caption`, `thead`, `tbody`, `tfoot`, `tr`, `th`, `td`.
+
+### JSON com `cody.json(valor, { status })`
+
+Use o helper para enviar um valor JSON com status explícito ou para serializar
+uma string como JSON. Opções omitidas, `undefined`, `{}` e
+`{ status: undefined }` usam HTTP 200. Quando fornecidas, as opções devem ser
+um objeto simples com protótipo padrão do contexto do Cody ou protótipo nulo.
+A única chave aceita é `status`, como propriedade própria, enumerável e de
+dados. Objetos com protótipo personalizado, proxies, acessores, chaves extras
+ou simbólicas e propriedades não enumeráveis são rejeitados. São aceitos
+status inteiros de 200 a 599, exceto 204, 205 e 304.
+
+Objetos simples, inclusive sem protótipo, arrays, `null`, booleanos, números
+finitos e strings compõem os valores JSON aceitos. Objetos e arrays podem
+conter outros valores válidos. O Cody rejeita ciclos, arrays esparsos, getters,
+funções, valores não finitos e outros retornos incompatíveis.
+
+Objetos, arrays, `null`, booleanos e números também podem ser devolvidos
+diretamente. Uma string comum sem schema de resposta sai como
+`text/plain; charset=utf-8`, mesmo que contenha marcação. Strings retornadas
+com `cody.json()` ou em rotas com schema de resposta são serializadas como
+JSON. Para escolher o schema, o código aplica primeiro o status e considera
+o schema de status exato, de classe (como `2xx`) ou `default`, conforme o
+Fastify. As definições por conteúdo selecionam `application/json` ou
+`*/*` quando aplicável. O schema pode excluir propriedades da resposta.
+
+### Exemplo de plugin com múltiplas rotas
+
+Exemplo ilustrativo de `manifest.json` para um módulo CommonJS em `main.js`.
+
+```json
+{"id":"exemplo","version":"1.0.0","entry":"main.js"}
+```
+
+O POST valida `nome` antes do handler e responde com HTTP 201. O GET de página
+ilustra que a sanitização preserva o parágrafo e remove o atributo `onclick`
+e o elemento `script` com seu conteúdo.
 
 ```javascript
-cody.addRouter('/exemplo/:id', {
-    GET: {
-        handler: async (request, reply) => {
-            return reply.code(200).send({ id: request.params.id });
+function setup({ cody }) {
+    cody.addRouter('/exemplo', {
+        GET: { handler: () => ({ ativo: true }) },
+        POST: {
+            schema: {
+                body: {
+                    type: 'object',
+                    required: ['nome'],
+                    additionalProperties: false,
+                    properties: { nome: { type: 'string', minLength: 1 } }
+                }
+            },
+            handler: ({ body }) => cody.json({ nome: body.nome }, { status: 201 })
         }
-    }
-});
+    });
+
+    cody.addRouter('/exemplo/usuarios/:id', {
+        GET: { handler: ({ params }) => ({ id: params.id }) }
+    });
+
+    cody.addRouter('/exemplo/pagina', {
+        GET: {
+            handler: () => cody.newPage().out(
+                '<h1>Exemplo</h1><p onclick="void 0">Olá!</p><script>void 0</script>'
+            )
+        }
+    });
+}
+
+module.exports = { setup };
 ```
-
-Essa rota é ilustrativa e não faz parte das rotas instaladas no projeto.
-Não há prefixo automático. O Cody valida as definições e os conflitos conhecidos
-antes de registrar os métodos com `app.route()`, consultando `app.hasRoute()`.
-Não sobrescreve rotas do núcleo ou de outros plugins. Preserva o HEAD automático
-do Fastify para GET, embora `HEAD` não seja aceito como chave da API; GET também
-é recusado diante de HEAD preexistente.
-
-### Renderização HTML com `template`
-
-A opção facultativa `template: 'experimental'` ativa a renderização pelo núcleo.
-Inicialmente, ela é aceita somente em `GET`, sem `schema.response`. Schemas de
-entrada continuam sendo encaminhados ao Fastify. Qualquer outro identificador
-de template, inclusive um caminho de arquivo, é rejeitado no registro.
-
-Exemplo real do registro da página em `Plugins/Plugin01/main.js`:
-
-```javascript
-config.cody.addRouter('/experimental/pagina', {
-    GET: {
-        template: 'experimental',
-        handler: async () => ({
-            titulo: 'Plugin experimental',
-            mensagem: 'Plugin ativo no LAB-AIEDU.'
-        })
-    }
-});
-```
-
-Diferentemente do handler tradicional `(request, reply)`, o handler com template
-recebe apenas `request`, sem `reply` nem o `this` nativo do Fastify. Deve retornar,
-sincronamente ou por Promise, um objeto simples com **exatamente** dois campos
-próprios: `titulo` e `mensagem`, ambos strings. São aceitas strings vazias e
-Unicode; não há limite de tamanho definido nesse contrato. Objetos sem protótipo
-são aceitos; campos herdados, getters, valores de outros tipos e campos extras
-são rejeitados. O plugin fornece dados; o núcleo monta e envia a resposta HTML.
-Erros do handler ou dados inválidos resultam em HTTP 500 com JSON genérico,
-sem expor a mensagem interna da falha.
-
-### Templates e responsabilidade pela apresentação
-
-`templates/experimental.html` pertence ao núcleo e contém os marcadores fixos
-`{{titulo}}` e `{{mensagem}}`, usados no texto de um `<h1>` e de um `<p>`.
-O campo `titulo` alimenta o `<h1>`; o `<title>` do documento é fixo.
-`core/page-renderer.js` lê o template durante `onReady`, quando o modo HTML é
-utilizado, valida o caminho real e exige um arquivo regular no diretório
-`templates/`. Ausência ou destino inválido impede a inicialização.
-O conteúdo fica em memória e não é relido por requisição.
-
-O renderizador escapa `&`, `<`, `>`, `"` e `'` como `&amp;`, `&lt;`, `&gt;`,
-`&quot;` e `&#39;`. A substituição ocorre em passagem única: marcadores contidos
-nos dados não são processados novamente, e os valores não são executados como
-código. Por exemplo, `<b>Olá</b>` aparece como texto, não como uma tag ativa.
-
-Esse escape atende aos pontos de inserção atuais em texto HTML. Não é um
-sanitizador genérico para HTML livre nem uma proteção adequada, por si só,
-para inserir dados em JavaScript, CSS, URLs ou outros contextos. Templates
-continuam sendo código de apresentação confiável, controlado pela equipe.
-Não há seleção arbitrária de arquivos nem mecanismo genérico de templates.
 
 ### Recursos públicos autorizados
 
-`public/css/app.css` define a apresentação da página. `core/public-assets.js`
+`public/css/app.css` é um ativo independente das páginas dos plugins. `core/public-assets.js`
 publica exclusivamente `GET /public/css/app.css`, com
 `text/css; charset=utf-8`, Helmet e HEAD automático do Fastify. Esse recurso
 é registrado também em `buildApp()` sem plugins.
@@ -369,13 +428,14 @@ Na inicialização, o núcleo exige um arquivo regular e verifica que seu caminh
 real permanece dentro de `public/`, impedindo escape por links simbólicos.
 O CSS é lido uma vez e mantido em memória. A URL é fixa e não usa um caminho
 fornecido pelo cliente para escolher arquivos. Não há listagem de diretórios
-nem suporte genérico a arquivos públicos: `/public/css/outro.css` e
-`/templates/experimental.html`, por exemplo, não são publicados e retornam 404.
+nem suporte genérico a arquivos públicos. `/public/css/outro.css`, por exemplo,
+retorna HTTP 404.
 CSS ausente ou inválido impede a inicialização da aplicação.
 
 ## 14. Validação, segurança e tratamento de falhas
 
-- Helmet configura cabeçalhos HTTP de segurança, inclusive nas rotas de plugins.
+- Helmet configura cabeçalhos HTTP de segurança, incluindo CSP e `nosniff`,
+  nas rotas do núcleo e dos plugins.
 - O limite global do corpo é de 1.024 bytes; acima dele, a resposta é HTTP 413.
 - O Ajv usa `coerceTypes: false` e `removeAdditional: false`: não converte tipos
   nem remove propriedades adicionais automaticamente. Rejeitar propriedades
@@ -383,14 +443,21 @@ CSS ausente ou inválido impede a inicialização da aplicação.
   como ocorre no `POST /`.
 - Os schemas dos plugins usam a validação do Fastify. O Cody valida seu formato
   externo; a compilação pode falhar durante o bootstrap.
-- As quatro respostas HTML demonstrativas de `/` permanecem estáticas. No
-  modo template, o núcleo escapa os dados nos pontos de texto autorizados;
-  isso não elimina a necessidade de tratamento adequado em outros contextos.
+- O núcleo controla as respostas dos plugins. O Cody identifica os resultados
+  declarativos por identidade em `WeakMap`s privados. Depois de renderizar uma
+  página, marca a requisição em um `WeakSet`. Um `onSend` local ao Cody substitui
+  respostas HTML sem essa autorização por HTTP 500 genérico em JSON.
+- Exceções em handlers, retornos inválidos e falhas de renderização ou
+  serialização seguem o tratamento interno do Cody, com corpo JSON genérico
+  e diagnóstico no servidor. A resposta é preparada com dados do núcleo e
+  continua genérica mesmo se o diagnóstico falhar. Somente mensagens próprias
+  armazenadas como dados e valores primitivos são lidos para o diagnóstico.
+  Os erros nativos de validação, parsing e limite do corpo continuam sob
+  responsabilidade do Fastify.
 
-Os testes incluem ausência de reflexão de marcadores XSS nas rotas anteriores,
-escape no template, rejeição de dados inválidos, restrições de arquivos,
-cabeçalhos, validação e limites. Não executam scripts em navegador nem demonstram ausência
-de todas as vulnerabilidades.
+As quatro respostas HTML demonstrativas de `/` continuam estáticas. Os testes
+cobrem ausência de reflexão de marcadores nessas rotas, sanitização de páginas,
+controle de resposta, cabeçalhos, validação e limites via `app.inject()`.
 
 Erros do carregador indicam a fase (ciclo de vida, descoberta, validação,
 seleção, carregamento ou setup), o contexto disponível e preservam `cause`.
@@ -402,7 +469,10 @@ original. Na execução direta, a falha resulta em `process.exitCode = 1`.
 Não há rollback de registros ou efeitos colaterais dos módulos e setups.
 Uma falha do Fastify durante o registro bloqueia novas tentativas pela mesma
 interface Cody. Aplicações com falha de inicialização devem ser descartadas.
-Plugins executam no processo Node.js, sem sandbox ou isolamento de segurança.
+Os plugins CommonJS executam no mesmo processo Node.js que o núcleo.
+A interface restrita, os `WeakMap`s e o `WeakSet` controlam o contrato das
+rotas Cody. O processo oferece às extensões as capacidades normais do Node.js,
+sem isolamento completo nem sandbox.
 
 ## 15. Como executar os testes e a cobertura
 
@@ -428,15 +498,22 @@ Sem essas opções, `npm run test:coverage` usa os relatórios padrão do Jest,
 que podem gerar arquivos em `coverage/`. As suítes do carregador e do bootstrap
 criam fixtures em diretórios temporários e os removem ao final.
 
-As oito suítes cobrem núcleo, segurança, Cody, carregador, plugin experimental,
-bootstrap, páginas e recursos públicos. As rotas usam `app.inject()`, sem servidor HTTP de rede.
-Nos testes de `start()`, `listen()` é substituído por uma simulação.
+As nove suítes são `core`, `security`, `cody`, `plugin-loader`,
+`experimental-plugin`, `bootstrap-plugins`, `pages`, `html-sanitizer` e
+`public-assets`. Os testes de rotas usam `app.inject()` sem abrir servidor
+de rede. Nos testes de `start()`, `listen()` é simulado.
 
-O relatório mais recente registrado em [docs/semana03.md](docs/semana03.md)
-apresentou **274 testes aprovados em 8 suítes e 99,12% de cobertura global
-de linhas**. Esses números correspondem
-à última execução registrada e podem mudar conforme o desenvolvimento.
-Os testes não foram reexecutados nesta atualização do README.
+Para verificar recursos abertos após os testes:
+
+```bash
+npm test -- --runInBand --no-cache --detectOpenHandles
+```
+
+A Etapa 5B da Semana 04 registrou **391 testes aprovados em 9 suítes** na
+execução normal e na execução com `--detectOpenHandles`. O Jest não apontou
+recursos abertos. Como referências históricas, a Etapa 3B registrou
+**349 testes em 9 suítes**, e a [Semana 03](docs/semana03.md) registrou
+**274 testes em 8 suítes e 99,12% de cobertura global de linhas**.
 
 Os scripts invocam o Jest local com `node --experimental-vm-modules`.
 No ambiente anteriormente verificado, essa opção habilita as APIs de módulos
@@ -469,8 +546,7 @@ necessidade de configurar variáveis de ambiente na coleção.
 Confira manualmente o status, os cabeçalhos e o corpo retornados. Os arquivos
 não contêm scripts de teste nem assertions automatizadas; os resultados acima
 são expectativas derivadas do código, não resultados de uma execução Bruno
-nesta revisão. A coleção não substitui as suítes Jest. Para conferir a
-apresentação e o carregamento do CSS, abra a página no navegador.
+nesta revisão. A coleção não substitui as suítes Jest. Para conferir a apresentação, abra a página no navegador.
 Ao terminar, encerre o servidor com `Ctrl+C` no terminal.
 
 Os arquivos da coleção podem ser versionados junto ao projeto no GitHub,
@@ -479,23 +555,24 @@ automatizada com o GitHub; esta atualização não executa add, commit ou push.
 
 ## 17. Estado atual, limitações e próximos passos
 
-A Semana 03 acrescenta renderização HTML controlada pelo núcleo e um recurso
-CSS autorizado à arquitetura existente. Cody, seleção de versões, setups
-aguardados e construção isolada por `buildApp()` permanecem implementados.
-O plugin experimental fornece JSON e HTML, e as quatro rotas demonstrativas
-do núcleo permanecem disponíveis.
+A Semana 04 integrou o controle de respostas dos plugins ao Cody. O plugin
+experimental fornece JSON e HTML sanitizado, e as quatro rotas demonstrativas
+do núcleo permanecem disponíveis. O ativo público tem sua própria rota fixa.
 
-Não há banco de dados, persistência, sandbox, rollback ou hot reload de plugins.
-Não há configuração de Docker, Docker Compose ou GitHub Actions nesta etapa.
-A API Cody aceita GET, POST, PUT e DELETE nos formatos descritos; a renderização
-HTML aceita somente GET com o template explicitamente autorizado `experimental`.
-Não há suporte genérico a arquivos públicos: somente o CSS fixo é publicado.
+Os objetos simples e arrays de outros contextos JavaScript são rejeitados.
+A API oferece JSON, texto simples e páginas HTML. Respostas binárias, streams
+e cabeçalhos personalizados de saída ficam fora do contrato. O JSON de saída
+ainda não tem limites próprios de tamanho ou profundidade.
 
-A instalação limpa, a conexão HTTP real, a disponibilidade da porta e a
-execução da coleção Bruno não foram verificadas nesta atualização documental.
-Os resultados de Jest e cobertura citados são os registrados no diário.
+Banco de dados, persistência, sandbox, rollback e hot reload ficam fora do
+protótipo atual, assim como Docker, Docker Compose e GitHub Actions.
 
-Próximos passos a avaliar, sujeitos à aprovação de escopo: conferir a página no
-navegador, executar as requisições Bruno, reavaliar VM Modules quando necessário
-e documentar futuras evoluções dos contratos. Essas possibilidades não
-representam funcionalidades adicionais implementadas.
+A Etapa 5 concluiu o descarte de conteúdo de `head` e `title`, a proteção
+do diagnóstico HTTP interno e a validação estrita das opções de `cody.json()`.
+A auditoria identificou por leitura riscos separados na emissão de diagnóstico
+em `start()` e na contextualização de valores lançados pelo carregador.
+Esses riscos não foram reproduzidos nem fazem parte da correção do Cody.
+
+As instruções de execução local e da coleção Bruno são procedimentos para
+verificação manual. Os exemplos deste README foram verificados por injeção
+de requisições, sem abrir uma porta de rede nem executar a coleção Bruno.

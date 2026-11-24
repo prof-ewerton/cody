@@ -4,7 +4,7 @@ AGENTS.md — LAB-AIEDU
 
 O LAB-AIEDU é um projeto acadêmico de pesquisa e desenvolvimento de uma plataforma extensível baseada em Learning Analytics e Inteligência Artificial.
 
-O backend será desenvolvido inicialmente com Node.js, Fastify e Jest, utilizando uma arquitetura modular orientada a plugins.
+O backend utiliza Node.js, Fastify e Jest em uma arquitetura modular orientada a plugins.
 
 O projeto está em fase de prototipação. As implementações devem priorizar simplicidade, clareza, testabilidade e possibilidade de evolução.
 
@@ -23,6 +23,8 @@ Fastify 5;
 Jest 30;
 
 JSON Schema e Ajv, integrados ao Fastify.
+
+sanitize-html para os fragmentos HTML dos plugins.
 
 Restrições da etapa atual:
 
@@ -44,47 +46,21 @@ As restrições são temporárias e poderão ser revisadas em etapas futuras.
 
 3. Organização e arquitetura
 
-core/main.js
+- `core/main.js` constrói e configura o Fastify, registra as rotas nativas e coordena a inicialização. Preservar a separação entre `buildApp()` e `start()`.
+- `core/plugin-loader.js` descobre candidatos em `Plugins/`, valida manifestos com `id`, `version` e `entry`, seleciona a versão mais recente de cada ID e aguarda o `setup({ cody })` dos módulos escolhidos. A falha de inicialização interrompe o carregamento.
+- `core/cody.js` registra as rotas dos plugins, adapta as requisições e controla status, serialização, MIME e envio. Manter o estado por aplicação ou fachada conforme o contrato.
+- `core/html-sanitizer.js` aplica a lista de tags permitidas, sem atributos, e limita a entrada a 100.000 unidades UTF-16. Descarta o conteúdo de `head`, `title`, `script`, `style`, `textarea`, `option` e `xmp`.
+- `core/render.js` sanitiza o fragmento por meio do módulo de sanitização e monta o documento com título `LAB-AIEDU`.
+- `core/public-assets.js` publica o ativo CSS fixo em rota nativa. A geração das páginas dos plugins permanece sem CSS e sem templates.
 
-Responsável por construir e inicializar a aplicação Fastify.
+Contrato público do Cody
 
-Deve preservar a separação entre a função buildApp() e a inicialização do servidor HTTP.
-
-A integração com o sistema de plugins deverá ser planejada de modo a evitar concentração excessiva de responsabilidades.
-
-core/cody.js
-
-Será responsável por disponibilizar uma interface controlada entre o núcleo da aplicação e os plugins.
-
-A API deverá permitir o registro de rotas, inicialmente por meio de uma operação denominada addRouter().
-
-O contrato definitivo de addRouter() ainda precisa ser aprovado.
-
-Evitar estado global compartilhado entre diferentes instâncias da aplicação.
-
-Sistema de plugins
-
-Os plugins ficarão no diretório Plugins/.
-
-O sistema deverá:
-
-Descobrir os plugins disponíveis.
-
-Ler e validar seus arquivos de configuração.
-
-Identificar cada plugin por ID e versão.
-
-Selecionar a versão mais recente de cada ID.
-
-Executar somente os plugins selecionados.
-
-Exigir uma função exportada setup(config).
-
-Disponibilizar o objeto Cody por meio da configuração recebida por setup().
-
-O formato definitivo do manifesto, a política de erros e a convenção de rotas devem ser definidos antes da implementação.
-
-Inicialmente, apenas um plugin experimental deverá ser desenvolvido.
+- `cody.addRouter(path, routes)` aceita GET, POST, PUT e DELETE com `handler` e `schema` opcional. Preservar a validação de caminhos e conflitos, o encerramento do registro em `onReady` e o HEAD automático.
+- Handlers síncronos e assíncronos recebem um único objeto com `params`, `query`, `body`, `headers` e `method`, copiados em profundidade após a validação. A chamada não fornece `request` ou `reply` nativos nem vincula `this` ao Fastify. HEAD aparece como método efetivo.
+- `cody.newPage().out(html)` produz um resultado declarativo para GET sem schema de resposta e para o HEAD automático dessa rota. O núcleo sanitiza e renderiza antes de enviar.
+- `cody.json(valor, options)` usa 200 por padrão. Aceita apenas opções simples de protótipo local padrão ou nulo, com `status` próprio, enumerável e de dados quando presente. O status deve ser inteiro de 200 a 599, exceto 204, 205 e 304. A identificação dos resultados declarativos usa `WeakMap` privado por fachada.
+- O Cody valida dados JSON em profundidade e rejeita retornos especiais, proxies, acessores e ciclos. String comum sem schema é texto simples. Strings declaradas como JSON ou em rotas com schema de resposta passam pela serialização JSON. Preservar a seleção de schemas por status e MIME.
+- O `onSend` local atua como defesa complementar contra HTML fora do fluxo de páginas. Erros internos usam HTTP 500 com JSON fixo. Falhas de diagnóstico ficam contidas, e os erros nativos de Ajv, parsing e limite de corpo continuam no Fastify.
 
 Restrições dos plugins
 
@@ -112,7 +88,9 @@ Acrescentar testes de segurança contra XSS conforme os requisitos da etapa atua
 
 Não afirmar que a aplicação está livre de vulnerabilidades apenas porque os testes passaram.
 
-As rotas adicionadas por plugins deverão respeitar as políticas globais de segurança.
+As rotas dos plugins devem respeitar Helmet e CSP, o limite global de 1 KiB e a validação do Fastify. Os módulos CommonJS compartilham o processo Node.js com o núcleo. A interface restrita, os `WeakMap`s e o `WeakSet` não constituem sandbox.
+
+A Semana 04 não oferece suporte ampliado a outros contextos JavaScript, limites próprios de tamanho ou profundidade do JSON de saída, respostas binárias, streams como resposta ou cabeçalhos personalizados.
 
 5. Regras de intervenção
 
@@ -152,13 +130,13 @@ Utilizar Jest para os testes automatizados.
 
 Utilizar app.inject() do Fastify para verificar o comportamento das rotas sem iniciar um servidor HTTP de rede.
 
-Preservar os oito testes existentes.
+Preservar as funcionalidades e os objetivos de cobertura válidos. As nove suítes cobrem núcleo, segurança, Cody, páginas, sanitizador, plugin experimental, bootstrap, carregador e ativos públicos. Concentrar regressões no arquivo responsável pelo comportamento.
 
 Criar testes proporcionais às funcionalidades implementadas.
 
 Verificar casos válidos, inválidos, limites e falhas relevantes.
 
-A execução atual dos testes pode exigir NODE_OPTIONS=--experimental-vm-modules.
+Executar primeiro as suítes afetadas. Para a verificação geral, usar `npm test -- --runInBand --no-cache`. Usar `npm test -- --runInBand --no-cache --detectOpenHandles` na verificação de recursos abertos. O script do projeto já inclui `--experimental-vm-modules`. Capturar o código do Jest separadamente e conferir o escopo com `git diff --check`, `git status --short` e `git diff --stat`.
 
 Nunca afirmar que um teste passou sem executá-lo.
 

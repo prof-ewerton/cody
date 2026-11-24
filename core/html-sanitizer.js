@@ -11,7 +11,16 @@ const HTML_POLICY = {
         'table', 'caption', 'thead', 'tbody',
         'tfoot', 'tr', 'th', 'td'
     ],
-    allowedAttributes: {}
+    allowedAttributes: {},
+    nonTextTags: [
+        'script',
+        'style',
+        'textarea',
+        'option',
+        'xmp',
+        'head',
+        'title'
+    ]
 };
 
 function sanitizeHtml(html) {
