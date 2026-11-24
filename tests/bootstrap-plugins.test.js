@@ -87,7 +87,7 @@ describe('Bootstrap com plugins', () => {
         expect(response.body).toBe(html);
     });
 
-    test('Conclui setup assíncrono antes de onReady e preserva encapsulamento', async () => {
+    test('Conclui setup assíncrono antes de onReady', async () => {
         const { root } = await fixture(`exports.setup = async ({cody}) => {
             await new Promise(resolve => setImmediate(resolve));
             cody.addRouter('/async', {GET:{handler: async () => 'concluído'}});
